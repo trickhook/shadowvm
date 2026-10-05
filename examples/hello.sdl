@@ -1,0 +1,7 @@
+fn main() {
+    let x = 7;
+    let y = 35;
+    let z = x * y;
+    syscall 0 (1, z, 0);
+    return z;
+}
