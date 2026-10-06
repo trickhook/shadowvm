@@ -63,7 +63,9 @@ void svm_hot_rest(svm_ctx *vm);
 
 svm_status svm_antire_check(void);
 
-void svm_unxor(const uint8_t *in, size_t n, char *out);
-#define SVM_UNXOR(arr, buf)  svm_unxor((arr), sizeof(arr), (buf))
+void svm_unxor_pad(const uint8_t *ct, const uint8_t *pad_x, size_t n,
+                   const uint8_t master[32], char *out);
+#define SVM_UNXOR(name, buf) \
+    svm_unxor_pad(OBF_##name, PAD_##name, OBF_##name##_LEN, SVM_OBF_MASTER, (buf))
 
 #endif

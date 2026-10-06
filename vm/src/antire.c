@@ -5,21 +5,30 @@
 #include <sys/prctl.h>
 
 #include "svm_internal.h"
+#include "obf_strings.h"
 
 static int svm_tracer_present(void) {
-    FILE *f = fopen("/proc/self/status", "re");
-    if (!f) return 0;
+    char path[24], mode[4], tag[16];
+    SVM_UNXOR(PROC_STAT, path);
+    SVM_UNXOR(PROC_RE, mode);
+    SVM_UNXOR(TRACER, tag);
+    FILE *f = fopen(path, mode);
+    svm_secure_zero(path, sizeof(path));
+    svm_secure_zero(mode, sizeof(mode));
+    if (!f) { svm_secure_zero(tag, sizeof(tag)); return 0; }
     char line[256];
     int found = 0;
+    size_t tlen = OBF_TRACER_LEN;
     while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "TracerPid:", 10) == 0) {
-            const char *p = line + 10;
+        if (strncmp(line, tag, tlen) == 0) {
+            const char *p = line + tlen;
             while (*p == ' ' || *p == '\t') p++;
             if (*p != '0') found = 1;
             break;
         }
     }
     fclose(f);
+    svm_secure_zero(tag, sizeof(tag));
     return found;
 }
 
@@ -41,14 +50,21 @@ static uint32_t svm_crc32_step(uint32_t crc, const uint8_t *data, size_t n) {
 }
 
 static int svm_self_text_crc(uint32_t *out) {
-    FILE *f = fopen("/proc/self/maps", "re");
-    if (!f) return 0;
+    char path[24], mode[4], so[24], rxp[8];
+    SVM_UNXOR(PROC_MAPS, path);
+    SVM_UNXOR(PROC_RE, mode);
+    SVM_UNXOR(SONAME, so);
+    SVM_UNXOR(RXP, rxp);
+    FILE *f = fopen(path, mode);
+    svm_secure_zero(path, sizeof(path));
+    svm_secure_zero(mode, sizeof(mode));
+    if (!f) { svm_secure_zero(so, sizeof(so)); svm_secure_zero(rxp, sizeof(rxp)); return 0; }
     char line[512];
     uint64_t start = 0, end = 0;
     int found = 0;
     while (fgets(line, sizeof(line), f)) {
-        if (!strstr(line, "libshadowvm.so")) continue;
-        if (!strstr(line, "r-xp") && !strstr(line, "r-x")) continue;
+        if (!strstr(line, so)) continue;
+        if (!strstr(line, rxp)) continue;
         uint64_t s = 0, e = 0;
         const char *p = line;
         for (int i = 0; i < 16 && p[i] && p[i] != '-'; i++) {
@@ -76,6 +92,8 @@ static int svm_self_text_crc(uint32_t *out) {
         break;
     }
     fclose(f);
+    svm_secure_zero(so, sizeof(so));
+    svm_secure_zero(rxp, sizeof(rxp));
     if (!found || end <= start) return 0;
     uint32_t crc = 0;
     size_t total = (size_t)(end - start);

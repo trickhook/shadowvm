@@ -6,24 +6,9 @@
 
 #include "svm_internal.h"
 #include "hmac_sha256_internal.h"
+#include "obf_strings.h"
 
 #define SVM_EXPORT __attribute__((visibility("default")))
-
-static const uint8_t OBF_URL_CHAL[] = { 0x7f, 0x28, 0x73, 0x2b, 0x6f, 0x70, 0x13, 0x04, 0x11, 0x10, 0x0d, 0x0a, 0x08, 0x48, 0x0b, 0x01, 0x0b, 0x07, 0x00, 0x08, 0x00, 0x08, 0x15 };
-static const uint8_t OBF_URL_COMP[] = { 0x7f, 0x28, 0x73, 0x2b, 0x6f, 0x70, 0x13, 0x04, 0x11, 0x10, 0x0d, 0x0a, 0x08, 0x48, 0x0b, 0x06, 0x07, 0x1b, 0x00, 0x08, 0x1a, 0x0a };
-static const uint8_t OBF_URANDOM[] = { 0x75, 0x3f, 0x39, 0x2b, 0x71, 0x2a, 0x12, 0x00, 0x0c, 0x07, 0x0b, 0x08 };
-static const uint8_t OBF_FOPEN_RB[] = { 0x28, 0x39 };
-static const uint8_t OBF_JSON_CHAL[] = { 0x21, 0x79, 0x3e, 0x31, 0x31, 0x3d, 0x3f, 0x08, 0x06, 0x41, 0x5e, 0x47, 0x43, 0x14, 0x4a, 0x45, 0x48, 0x07, 0x03, 0x0c, 0x0a, 0x0a, 0x02, 0x2e, 0x1b, 0x17, 0x56, 0x4f, 0x54, 0x52, 0x0b, 0x5b, 0x56, 0x59, 0x18, 0x18, 0x08, 0x16, 0xe3, 0xe4, 0xdd, 0xe5, 0xf4, 0xa7, 0xbc, 0xa5, 0xad, 0xfa, 0xa8, 0xa7, 0xae, 0xe3, 0xe1, 0xe1, 0xf3, 0xf4, 0xcd, 0xf0, 0xb6, 0xaf, 0xb4, 0xb2, 0xeb, 0xbb, 0xe7 };
-static const uint8_t OBF_JSON_COMP[] = { 0x21, 0x79, 0x3f, 0x35, 0x3f, 0x33, 0x0c, 0x04, 0x0c, 0x04, 0x01, 0x3a, 0x0f, 0x03, 0x4a, 0x53, 0x48, 0x4e, 0x1f, 0x4f, 0x42, 0x4d, 0x00, 0x03, 0x1d, 0x1c, 0x12, 0x57, 0x4c, 0x55, 0x5d, 0x0a, 0x58, 0x06 };
-static const uint8_t OBF_ATTEST_PIN[] = { 0x29, 0x2d, 0x31, 0x70, 0x3f, 0x2b, 0x14, 0x04, 0x11, 0x17, 0x18, 0x13, 0x57, 0x1b };
-static const uint8_t OBF_K_CHAL_ID[] = { 0x39, 0x33, 0x3d, 0x31, 0x32, 0x3a, 0x0e, 0x06, 0x07, 0x3c, 0x0d, 0x01 };
-static const uint8_t OBF_K_NONCE_S[] = { 0x34, 0x34, 0x32, 0x3e, 0x3b, 0x00, 0x13 };
-static const uint8_t OBF_K_ENV_SE[] = { 0x3f, 0x35, 0x2a, 0x38, 0x32, 0x30, 0x10, 0x04, 0x3d, 0x10, 0x01, 0x04, 0x0a, 0x02, 0x0c };
-static const uint8_t OBF_K_ENV_SI[] = { 0x3f, 0x35, 0x2a, 0x38, 0x32, 0x30, 0x10, 0x04, 0x3d, 0x10, 0x0d, 0x02 };
-static const uint8_t OBF_K_SID[] = { 0x29, 0x3e, 0x2f, 0x2e, 0x37, 0x30, 0x0e, 0x3e, 0x0b, 0x07 };
-static const uint8_t OBF_K_KEY[] = { 0x31, 0x3e, 0x25 };
-static const uint8_t OBF_K_NONCE[] = { 0x34, 0x34, 0x32, 0x3e, 0x3b };
-static const uint8_t OBF_K_EXPIRES[] = { 0x3f, 0x23, 0x2c, 0x34, 0x2c, 0x3a, 0x13 };
 
 static int svm_http_post(const char *url, const char *body, size_t body_len,
                          uint8_t **out, size_t *out_len) {
@@ -42,8 +27,8 @@ static void svm_hex_encode(const uint8_t *in, size_t len, char *out) {
 
 static int svm_random(uint8_t *buf, size_t n) {
     char path[16], mode[4];
-    SVM_UNXOR(OBF_URANDOM, path);
-    SVM_UNXOR(OBF_FOPEN_RB, mode);
+    SVM_UNXOR(URANDOM, path);
+    SVM_UNXOR(FOPEN_RB, mode);
     FILE *f = fopen(path, mode);
     svm_secure_zero(path, sizeof(path));
     svm_secure_zero(mode, sizeof(mode));
@@ -75,14 +60,14 @@ SVM_EXPORT svm_status svm_attest(const svm_remote_cfg *cfg, svm_session *out_ses
 
     char url1[1024];
     char fmt_url[32];
-    SVM_UNXOR(OBF_URL_CHAL, fmt_url);
+    SVM_UNXOR(URL_CHAL, fmt_url);
     int ul = snprintf(url1, sizeof(url1), fmt_url, cfg->server_url);
     svm_secure_zero(fmt_url, sizeof(fmt_url));
     if (ul < 0 || (size_t)ul >= sizeof(url1)) return SVM_E_ATTEST;
 
     char body1[2048];
     char fmt_body1[80];
-    SVM_UNXOR(OBF_JSON_CHAL, fmt_body1);
+    SVM_UNXOR(JSON_CHAL, fmt_body1);
     int bl = snprintf(body1, sizeof(body1), fmt_body1,
         cfg->blob_id, cfg->loader_id, device_fp_hex, nonce_c_hex);
     svm_secure_zero(fmt_body1, sizeof(fmt_body1));
@@ -97,8 +82,8 @@ SVM_EXPORT svm_status svm_attest(const svm_remote_cfg *cfg, svm_session *out_ses
     const char *challenge_id_s, *nonce_s_hex_s;
     size_t challenge_id_len, nonce_s_hex_len;
     char key_chal_id[16], key_nonce_s[16];
-    SVM_UNXOR(OBF_K_CHAL_ID, key_chal_id);
-    SVM_UNXOR(OBF_K_NONCE_S, key_nonce_s);
+    SVM_UNXOR(K_CHAL_ID, key_chal_id);
+    SVM_UNXOR(K_NONCE_S, key_nonce_s);
     int ok1 = svm_json_find_string((const char *)resp1, resp1_len, key_chal_id,
                                    &challenge_id_s, &challenge_id_len) &&
               svm_json_find_string((const char *)resp1, resp1_len, key_nonce_s,
@@ -124,7 +109,7 @@ SVM_EXPORT svm_status svm_attest(const svm_remote_cfg *cfg, svm_session *out_ses
     if (!pin) { free(resp1); return SVM_E_NOMEM; }
     size_t po = 0;
     char pfx[16];
-    SVM_UNXOR(OBF_ATTEST_PIN, pfx);
+    SVM_UNXOR(ATTEST_PIN, pfx);
     memcpy(pin + po, pfx, 14); po += 14;
     svm_secure_zero(pfx, sizeof(pfx));
     memcpy(pin + po, cfg->blob_id, blob_id_len); po += blob_id_len;
@@ -153,14 +138,14 @@ SVM_EXPORT svm_status svm_attest(const svm_remote_cfg *cfg, svm_session *out_ses
 
     char url2[1024];
     char fmt_url2[32];
-    SVM_UNXOR(OBF_URL_COMP, fmt_url2);
+    SVM_UNXOR(URL_COMP, fmt_url2);
     ul = snprintf(url2, sizeof(url2), fmt_url2, cfg->server_url);
     svm_secure_zero(fmt_url2, sizeof(fmt_url2));
     if (ul < 0 || (size_t)ul >= sizeof(url2)) return SVM_E_ATTEST;
 
     char body2[1024];
     char fmt_body2[48];
-    SVM_UNXOR(OBF_JSON_COMP, fmt_body2);
+    SVM_UNXOR(JSON_COMP, fmt_body2);
     bl = snprintf(body2, sizeof(body2), fmt_body2, challenge_id_c, proof_hex);
     svm_secure_zero(fmt_body2, sizeof(fmt_body2));
     if (bl < 0 || (size_t)bl >= sizeof(body2)) return SVM_E_ATTEST;
@@ -174,9 +159,9 @@ SVM_EXPORT svm_status svm_attest(const svm_remote_cfg *cfg, svm_session *out_ses
     const char *env_s, *sig_s, *sid_s;
     size_t env_len_b64, sig_len_b64, sid_len;
     char key_env_se[20], key_env_si[16], key_sid[16];
-    SVM_UNXOR(OBF_K_ENV_SE, key_env_se);
-    SVM_UNXOR(OBF_K_ENV_SI, key_env_si);
-    SVM_UNXOR(OBF_K_SID, key_sid);
+    SVM_UNXOR(K_ENV_SE, key_env_se);
+    SVM_UNXOR(K_ENV_SI, key_env_si);
+    SVM_UNXOR(K_SID, key_sid);
     int ok2 = svm_json_find_string((const char *)resp2, resp2_len, key_env_se,
                                    &env_s, &env_len_b64) &&
               svm_json_find_string((const char *)resp2, resp2_len, key_env_si,
@@ -251,10 +236,10 @@ SVM_EXPORT svm_status svm_attest(const svm_remote_cfg *cfg, svm_session *out_ses
     size_t key_hex_len, bnonce_hex_len, sid2_len;
     int64_t expires = 0;
     char k_key[8], k_nonce[8], k_sid2[16], k_expires[12];
-    SVM_UNXOR(OBF_K_KEY, k_key);
-    SVM_UNXOR(OBF_K_NONCE, k_nonce);
-    SVM_UNXOR(OBF_K_SID, k_sid2);
-    SVM_UNXOR(OBF_K_EXPIRES, k_expires);
+    SVM_UNXOR(K_KEY, k_key);
+    SVM_UNXOR(K_NONCE, k_nonce);
+    SVM_UNXOR(K_SID, k_sid2);
+    SVM_UNXOR(K_EXPIRES, k_expires);
     int ok = svm_json_find_string((const char *)env_pt, env_pt_len, k_key,
                                   &key_hex_s, &key_hex_len) &&
              svm_json_find_string((const char *)env_pt, env_pt_len, k_nonce,
