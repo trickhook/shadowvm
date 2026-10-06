@@ -16,6 +16,7 @@ class Config:
     tls_key: str | None
     rate_compile_per_hour: int
     rate_session_per_hour: int
+    rate_blob_fetch_per_hour: int
     session_ttl_ms: int
 
 
@@ -53,5 +54,6 @@ def load(env_file: str | None = None) -> Config:
         tls_key=os.environ.get("SHADOWVM_TLS_KEY") or None,
         rate_compile_per_hour=int(os.environ.get("SHADOWVM_RATE_COMPILE_PER_HOUR", "60")),
         rate_session_per_hour=int(os.environ.get("SHADOWVM_RATE_SESSION_PER_HOUR", "600")),
+        rate_blob_fetch_per_hour=int(os.environ.get("SHADOWVM_RATE_BLOB_FETCH_PER_HOUR", "3600")),
         session_ttl_ms=int(os.environ.get("SHADOWVM_SESSION_TTL_MS", "600000")),
     )

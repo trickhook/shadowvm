@@ -53,6 +53,8 @@ class Blob(Base):
     owner_account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id"))
     sealed_body: Mapped[bytes] = mapped_column(LargeBinary)
     blob_sha256: Mapped[str] = mapped_column(String(64))
+    blob_salt: Mapped[bytes] = mapped_column(LargeBinary, default=b"")
+    kdf_iters: Mapped[int] = mapped_column(Integer, default=100000)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 

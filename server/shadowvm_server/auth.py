@@ -45,6 +45,9 @@ class SlidingWindow:
     def snapshot(self) -> dict:
         return {k: list(v) for k, v in self._events.items()}
 
+    def reset(self) -> None:
+        self._events.clear()
+
 
 _rate = SlidingWindow()
 

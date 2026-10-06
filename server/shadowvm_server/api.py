@@ -21,14 +21,14 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from shadowc.crypto import blake2s, xchacha20, poly1305
 
 from . import compile as compiler
-from .auth import check_rate, require_account
+from .auth import check_rate, rate_limiter, require_account
 from .config import Config, load as load_config
 from .db import (
     Account,
@@ -138,9 +138,10 @@ def create_app(config: Config | None = None, kms: KMS | None = None) -> FastAPI:
             if loader.owner_account_id != account.id:
                 raise HTTPException(status_code=403, detail="loader not owned by account")
             k_master = app.state.kms.get_master(loader.id)
-            sealed = compiler.seal_remote(
+            iters = 100000
+            sealed, blob_salt, _blob_key = compiler.seal_remote(
                 body.source, k_master, flags=body.flags,
-                symbols=body.symbols, iters=100000,
+                symbols=body.symbols, iters=iters,
             )
             blob_sha = compiler.sha256_hex(sealed)
             blob_id = _rid("blb")
@@ -150,6 +151,8 @@ def create_app(config: Config | None = None, kms: KMS | None = None) -> FastAPI:
                 owner_account_id=account.id,
                 sealed_body=sealed,
                 blob_sha256=blob_sha,
+                blob_salt=blob_salt,
+                kdf_iters=iters,
             )
             sess.add(row)
             await sess.commit()
@@ -159,6 +162,35 @@ def create_app(config: Config | None = None, kms: KMS | None = None) -> FastAPI:
                 sealed_blob=base64.b64encode(sealed).decode("ascii"),
                 created_at=_ms(row.created_at or _utcnow()),
             )
+
+    @app.get("/v1/blob/{blob_id}")
+    async def get_blob(blob_id: str, request: Request):
+        """Return the raw sealed body for a blob by id.
+
+        Public (no bearer): the sealed body is useless without a per-session
+        envelope. Per-IP sliding-window rate limit guards against mass pulls.
+        """
+        if request.client is not None:
+            ip = request.client.host or "unknown"
+        else:
+            ip = "unknown"
+        rl = rate_limiter()
+        if not rl.allow(f"ip:{ip}:blob", cfg.rate_blob_fetch_per_hour, 3600.0):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="blob fetch rate limit exceeded",
+            )
+        sm = get_sessionmaker()
+        async with sm() as sess:
+            blob = (await sess.execute(
+                select(Blob).where(Blob.id == blob_id)
+            )).scalar_one_or_none()
+            if blob is None:
+                raise HTTPException(status_code=404, detail="blob not found")
+            if blob.revoked:
+                raise HTTPException(status_code=410, detail="blob revoked")
+            body_bytes = bytes(blob.sealed_body)
+        return Response(content=body_bytes, media_type="application/octet-stream")
 
     @app.get("/v1/integrity/{blob_id}", response_model=IntegrityResponse)
     async def integrity_endpoint(
@@ -175,8 +207,13 @@ def create_app(config: Config | None = None, kms: KMS | None = None) -> FastAPI:
             if blob.owner_account_id != account.id:
                 raise HTTPException(status_code=403, detail="blob not owned by account")
             k_master = app.state.kms.get_master(blob.loader_id)
+            blob_salt_bytes = bytes(blob.blob_salt or b"")
+            iters = int(blob.kdf_iters or 100000)
+        if not blob_salt_bytes:
+            raise HTTPException(status_code=409, detail="blob missing salt")
         try:
-            _ = compiler.unseal_remote(blob.sealed_body, k_master)
+            blob_key = compiler.blob_key_from_master(k_master, blob_salt_bytes, iters)
+            _ = compiler.unseal_with_blob_key(blob.sealed_body, blob_key)
         except Exception:
             raise HTTPException(status_code=409, detail="integrity check failed")
         current_sha = compiler.sha256_hex(blob.sealed_body)
@@ -257,6 +294,12 @@ def create_app(config: Config | None = None, kms: KMS | None = None) -> FastAPI:
             k_hmac = app.state.kms.get_hmac(chal.loader_id)
             k_master = app.state.kms.get_master(chal.loader_id)
             k_sign_priv = app.state.kms.get_sign_priv(chal.loader_id)
+            blob_salt_bytes = bytes(blob.blob_salt or b"")
+            if not blob_salt_bytes:
+                raise HTTPException(status_code=409, detail="blob missing salt")
+            blob_key = compiler.blob_key_from_master(
+                k_master, blob_salt_bytes, int(blob.kdf_iters or 100000)
+            )
 
             attest_msg = (
                 b"svm-attest|v1|"
@@ -287,7 +330,7 @@ def create_app(config: Config | None = None, kms: KMS | None = None) -> FastAPI:
             expires_at = _utcnow() + dt.timedelta(milliseconds=cfg.session_ttl_ms)
             envelope_body = json.dumps({
                 "session_id": session_id,
-                "key": k_master.hex(),
+                "key": blob_key.hex(),
                 "key_session": k_session.hex(),
                 "nonce": blob_nonce.hex(),
                 "expires": _ms(expires_at),

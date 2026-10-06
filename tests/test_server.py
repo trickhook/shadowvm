@@ -38,6 +38,7 @@ def _mk_config(tmpdir: Path) -> Config:
         tls_key=None,
         rate_compile_per_hour=1000,
         rate_session_per_hour=1000,
+        rate_blob_fetch_per_hour=10000,
         session_ttl_ms=60000,
     )
 
@@ -97,7 +98,7 @@ async def test_full_roundtrip(seeded):
     hdrs = {"Authorization": f"Bearer {info['token']}"}
 
     r = await ac.post("/v1/compile", json={
-        "source": "func main() { nop }",
+        "source": "fn main() { return 42; }",
         "target_loader_id": info["loader_id"],
         "symbols": ["main"],
         "flags": {"anti_debug": True},
@@ -165,7 +166,7 @@ async def test_full_roundtrip(seeded):
     )
     assert k_session == expected_session
 
-    plain_body = scompile.unseal_remote(sealed, k_blob)
+    plain_body = scompile.unseal_with_blob_key(sealed, k_blob)
     assert sealed[:4] == b"SVM1"
     assert plain_body is not None and len(plain_body) > 0
 
@@ -174,7 +175,7 @@ async def test_integrity_tamper(seeded):
     cfg, info, ac = seeded
     hdrs = {"Authorization": f"Bearer {info['token']}"}
     r = await ac.post("/v1/compile", json={
-        "source": "x",
+        "source": "fn main() { return 1; }",
         "target_loader_id": info["loader_id"],
     }, headers=hdrs)
     assert r.status_code == 200
@@ -196,10 +197,10 @@ async def test_integrity_tamper(seeded):
 async def test_auth_rejects(seeded):
     cfg, info, ac = seeded
     r = await ac.post("/v1/compile", json={
-        "source": "x", "target_loader_id": info["loader_id"],
+        "source": "fn main() { return 0; }", "target_loader_id": info["loader_id"],
     })
     assert r.status_code == 401
     r = await ac.post("/v1/compile", json={
-        "source": "x", "target_loader_id": info["loader_id"],
+        "source": "fn main() { return 0; }", "target_loader_id": info["loader_id"],
     }, headers={"Authorization": "Bearer wrong"})
     assert r.status_code == 401
