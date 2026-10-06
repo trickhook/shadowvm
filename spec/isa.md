@@ -69,3 +69,7 @@ Each real opcode has N variants, N in [1,4]. Variant id is written into the opco
 | 2   | time_ms    |                               | result in R0 |
 | 3   | rand_u64   |                               | result in R0 |
 | 4   | abort      |                               |              |
+
+## Variant decoding
+
+Variant byte layout: bits 0..4 are the real opcode, bits 5..6 are the variant index v in {0,1,2}. Dispatcher recovers the real opcode via `variant & 0x1F` and rejects values where either `variant >= SVM_VARIANT_LIMIT (0x70)` or `(variant & 0x1F) >= SVM_REAL_OPS (0x1C)`.

@@ -1,0 +1,7 @@
+{
+    global:
+        Java_com_trickhook_shadowvm_HelloJNI_runHello;
+        Java_com_trickhook_shadowvm_HelloJNI_runSum;
+    local:
+        *;
+};

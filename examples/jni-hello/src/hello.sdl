@@ -1,0 +1,14 @@
+fn sum(a, b) {
+    return a + b;
+}
+
+fn mul(a, b) {
+    return a * b;
+}
+
+fn hello() {
+    let a = sum(10, 20);
+    let b = mul(a, 7);
+    let c = b - 5;
+    return c;
+}

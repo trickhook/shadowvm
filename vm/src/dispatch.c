@@ -89,7 +89,8 @@ svm_status svm_dispatch(svm_ctx *vm) {
         FETCH_WORD(_iw);                                                             \
         variant = (uint8_t)(_iw >> 24);                                              \
         if (variant >= SVM_VARIANT_LIMIT) { rc = SVM_E_BAD_OPCODE; goto L_exit; }    \
-        uint8_t _real = (uint8_t)(variant % SVM_REAL_OPS);                           \
+        uint8_t _real = (uint8_t)(variant & 0x1F);                                   \
+        if (_real >= SVM_REAL_OPS) { rc = SVM_E_BAD_OPCODE; goto L_exit; }           \
         const uint8_t *_vm = vm->mask + ((uint32_t)variant << 2);                    \
         b0 = (uint8_t)(_iw & 0xFF) ^ _vm[0];                                         \
         b1 = (uint8_t)((_iw >> 8) & 0xFF) ^ _vm[1];                                  \
