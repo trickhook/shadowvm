@@ -25,67 +25,11 @@ static const uint8_t OBF_K_KEY[] = { 0x31, 0x3e, 0x25 };
 static const uint8_t OBF_K_NONCE[] = { 0x34, 0x34, 0x32, 0x3e, 0x3b };
 static const uint8_t OBF_K_EXPIRES[] = { 0x3f, 0x23, 0x2c, 0x34, 0x2c, 0x3a, 0x13 };
 
-#ifdef SHADOWVM_USE_CURL
-#include <curl/curl.h>
-
-typedef struct {
-    uint8_t *data;
-    size_t len;
-    size_t cap;
-} svm_buf;
-
-static size_t svm_curl_write(void *ptr, size_t sz, size_t nm, void *ud) {
-    svm_buf *b = (svm_buf *)ud;
-    size_t n = sz * nm;
-    if (b->len + n > b->cap) {
-        size_t nc = b->cap ? b->cap * 2 : 256;
-        while (nc < b->len + n) nc *= 2;
-        uint8_t *np = (uint8_t *)realloc(b->data, nc);
-        if (!np) return 0;
-        b->data = np;
-        b->cap = nc;
-    }
-    memcpy(b->data + b->len, ptr, n);
-    b->len += n;
-    return n;
-}
-
-static int svm_http_post(const char *url, const char *body, size_t body_len,
-                         uint8_t **out, size_t *out_len) {
-    CURL *c = curl_easy_init();
-    if (!c) return 0;
-    svm_buf b;
-    b.data = NULL; b.len = 0; b.cap = 0;
-    struct curl_slist *hdrs = NULL;
-    hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
-    curl_easy_setopt(c, CURLOPT_URL, url);
-    curl_easy_setopt(c, CURLOPT_POSTFIELDS, body);
-    curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)body_len);
-    curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
-    curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, svm_curl_write);
-    curl_easy_setopt(c, CURLOPT_WRITEDATA, &b);
-    curl_easy_setopt(c, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
-    CURLcode rc = curl_easy_perform(c);
-    long code = 0;
-    curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
-    curl_slist_free_all(hdrs);
-    curl_easy_cleanup(c);
-    if (rc != CURLE_OK || code < 200 || code >= 300) {
-        free(b.data);
-        return 0;
-    }
-    *out = b.data;
-    *out_len = b.len;
-    return 1;
-}
-#else
 static int svm_http_post(const char *url, const char *body, size_t body_len,
                          uint8_t **out, size_t *out_len) {
     (void)url; (void)body; (void)body_len; (void)out; (void)out_len;
     return 0;
 }
-#endif
 
 static void svm_hex_encode(const uint8_t *in, size_t len, char *out) {
     static const char tab[] = "0123456789abcdef";
