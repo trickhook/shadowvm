@@ -20,6 +20,8 @@
 
 struct svm_ctx {
     uint8_t kmaster[32];
+    uint8_t kmaster_vault[32];
+    uint8_t kmaster_pad[32];
     uint8_t *body;
     size_t body_len;
     uint32_t entry_off;
@@ -55,5 +57,13 @@ int svm_json_find_int(const char *src, size_t len, const char *key, int64_t *val
 
 int svm_ed25519_verify(const uint8_t sig[64], const uint8_t *msg, size_t mlen,
                        const uint8_t pub[32]);
+
+void svm_hot_wake(svm_ctx *vm);
+void svm_hot_rest(svm_ctx *vm);
+
+svm_status svm_antire_check(void);
+
+void svm_unxor(const uint8_t *in, size_t n, char *out);
+#define SVM_UNXOR(arr, buf)  svm_unxor((arr), sizeof(arr), (buf))
 
 #endif

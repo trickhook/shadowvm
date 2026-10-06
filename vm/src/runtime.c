@@ -13,6 +13,12 @@ SVM_EXPORT svm_ctx *svm_open_local(const uint8_t *blob, size_t blob_len,
     svm_status s;
     svm_ctx *vm = NULL;
 
+    s = svm_antire_check();
+    if (s != SVM_OK) {
+        if (status) *status = s;
+        return NULL;
+    }
+
     if (!blob || blob_len < (size_t)SVM_HDR_SIZE + SVM_MAC_SIZE || !password) {
         if (status) *status = SVM_E_BAD_MAGIC;
         return NULL;
@@ -53,6 +59,11 @@ SVM_EXPORT svm_ctx *svm_open_local(const uint8_t *blob, size_t blob_len,
 }
 
 SVM_EXPORT svm_ctx *svm_open_remote(const svm_remote_cfg *cfg, svm_status *status) {
+    svm_status rs = svm_antire_check();
+    if (rs != SVM_OK) {
+        if (status) *status = rs;
+        return NULL;
+    }
     if (!cfg) {
         if (status) *status = SVM_E_ATTEST;
         return NULL;
@@ -149,7 +160,9 @@ SVM_EXPORT svm_status svm_run(svm_ctx *vm, const char *symbol,
     vm->regs[31] = (int64_t)sp;
 
     vm->pc = off;
+    svm_hot_wake(vm);
     svm_status s = svm_dispatch(vm);
+    svm_hot_rest(vm);
     if (s == SVM_OK && result) *result = vm->regs[0];
     return s;
 }
@@ -165,6 +178,8 @@ SVM_EXPORT void svm_close(svm_ctx *vm) {
         free(vm->mem);
     }
     svm_secure_zero(vm->kmaster, 32);
+    svm_secure_zero(vm->kmaster_vault, 32);
+    svm_secure_zero(vm->kmaster_pad, 32);
     svm_secure_zero(vm, sizeof(*vm));
     free(vm);
 }

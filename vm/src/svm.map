@@ -1,0 +1,13 @@
+{
+    global:
+        svm_open_local;
+        svm_open_remote;
+        svm_set_syscall;
+        svm_run;
+        svm_close;
+        svm_strerror;
+        svm_attest;
+        svm_session_zero;
+    local:
+        *;
+};

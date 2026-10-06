@@ -70,4 +70,5 @@ SVM_EXPORT void svm_secure_zero(void *p, size_t n) {
     while (n--) {
         *vp++ = 0;
     }
+    __asm__ __volatile__ ("" : : "r"(p) : "memory");
 }

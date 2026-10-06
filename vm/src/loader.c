@@ -1,8 +1,27 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "svm_internal.h"
+
+static const uint8_t OBF_L_URANDOM[] = { 0x75, 0x3f, 0x39, 0x2b, 0x71, 0x2a, 0x12, 0x00, 0x0c, 0x07, 0x0b, 0x08 };
+static const uint8_t OBF_L_RB[] = { 0x28, 0x39 };
+static const uint8_t OBF_L_AUTH[] = { 0x3b, 0x2e, 0x28, 0x35 };
+
+static int svm_loader_random(uint8_t *buf, size_t n) {
+    char path[16], mode[4];
+    SVM_UNXOR(OBF_L_URANDOM, path);
+    SVM_UNXOR(OBF_L_RB, mode);
+    FILE *f = fopen(path, mode);
+    svm_secure_zero(path, sizeof(path));
+    svm_secure_zero(mode, sizeof(mode));
+    if (!f) return 0;
+    size_t r = fread(buf, 1, n, f);
+    fclose(f);
+    return r == n;
+}
 
 static uint32_t svm_rd32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
@@ -45,7 +64,10 @@ svm_status svm_loader_open(const uint8_t *blob, size_t blob_len,
 
     uint8_t kauth_input[36];
     memcpy(kauth_input, kmaster, 32);
-    memcpy(kauth_input + 32, "auth", 4);
+    char auth_tag[8];
+    SVM_UNXOR(OBF_L_AUTH, auth_tag);
+    memcpy(kauth_input + 32, auth_tag, 4);
+    svm_secure_zero(auth_tag, sizeof(auth_tag));
     uint8_t kauth[32];
     svm_blake2s(NULL, 0, kauth_input, 36, kauth, 32);
 
@@ -131,7 +153,18 @@ svm_status svm_loader_open(const uint8_t *blob, size_t blob_len,
         return SVM_E_NOMEM;
     }
 
-    memcpy(vm->kmaster, kmaster, 32);
+    if (!svm_loader_random(vm->kmaster_pad, 32)) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        uint8_t seed[16];
+        memcpy(seed, &ts, sizeof(ts) < 16 ? sizeof(ts) : 16);
+        svm_blake2s(NULL, 0, seed, sizeof(ts) < 16 ? sizeof(ts) : 16, vm->kmaster_pad, 32);
+        svm_secure_zero(seed, 16);
+    }
+    for (int i = 0; i < 32; i++) {
+        vm->kmaster_vault[i] = kmaster[i] ^ vm->kmaster_pad[i];
+    }
+    svm_secure_zero(vm->kmaster, 32);
     vm->body = body;
     vm->body_len = body_len;
     vm->entry_off = entry_off;

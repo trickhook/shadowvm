@@ -29,7 +29,10 @@ list(FILTER SHADOWVM_SOURCES EXCLUDE REGEX "selftest_main\\.c$")
 add_library(shadowvm SHARED ${SHADOWVM_SOURCES})
 target_include_directories(shadowvm PUBLIC include)
 target_include_directories(shadowvm PRIVATE src)
-target_link_options(shadowvm PRIVATE -Wl,-z,now -Wl,-z,relro)
+target_link_options(shadowvm PRIVATE
+    -Wl,-z,now -Wl,-z,relro
+    -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/svm.map
+)
 
 add_library(shadowvm_static STATIC ${SHADOWVM_SOURCES})
 target_include_directories(shadowvm_static PUBLIC include)
