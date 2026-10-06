@@ -163,6 +163,18 @@ class _FuncGen:
             ins.imm32 = n * 8
             self.out.append(ins)
             self.out.append(_emit_opword(OPCODES["sub"], dst=31, src1=31, src2=scratch))
+        for i, vreg in enumerate(self.func.params):
+            if i >= 6:
+                break
+            arg_reg = i
+            if self.is_spilled(vreg):
+                slot = self.alloc.spill_slot_of[vreg]
+                self.out.append(_emit_opword(OPCODES["store"], dst=31, src1=arg_reg, imm9=slot * 8))
+            else:
+                phys = self.phys(vreg)
+                if phys is None or phys == arg_reg:
+                    continue
+                self.out.append(_emit_opword(OPCODES["mov"], dst=phys, src1=arg_reg))
 
     def emit_epilogue(self) -> None:
         n = self.alloc.nspills
